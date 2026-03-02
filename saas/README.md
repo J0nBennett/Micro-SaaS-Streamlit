@@ -1,64 +1,65 @@
-﻿
-## Streamlit SaaS App Tutorial
+# Micro-SaaS Streamlit (Estado actual)
 
-## Full Course and Walkthrough
-https://www.udemy.com/course/build-a-generative-ai-micro-saas-app-with-python-streamlit/?referralCode=DB3859ED45D76E36A8AF
----
+Aplicacion Streamlit con:
+- autenticacion sobre MongoDB
+- resumen y traduccion de texto via OpenAI
+- verificacion de suscripcion via Stripe
+- gestion de cuenta en pagina adicional
 
-### Introduction
-This tutorial walks you through the creation of a simple Software as a Service (SaaS) application using Streamlit. The application integrates with MongoDB for authentication, provides text summarization and translation features using OpenAI's GPT-3.5 model, and offers subscription-only access to certain tools.
+## Estructura actual
 
-### Directory Structure
 ```
-streamlit-saas/
-│
-├── .env                   # Environment variables for the app (e.g., database credentials, API keys)
-├── .gitignore             # List of files and directories to be ignored by Git
-├── Home.py                # Main home page for the application
-├── mongo_auth/            # Directory containing MongoDB authentication logic
-├── Pages/                 # Directory containing additional pages for the app (not detailed in the provided structure)
-├── README.md              # This README file
-├── requirements.txt       # Python dependencies required for the app
-├── utils.py               # Utility functions for the app (e.g., email verification, user registration)
-└── __pycache__/           # Directory for Python cache files
+saas/
+  Home.py
+  utils.py
+  requirements.txt
+  mongo_auth/
+    authenticate.py
+    hasher.py
+    exceptions.py
+    utils.py
+  pages/
+    Account_Management.py
 ```
 
-### Setting Up
+## Requisitos
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/ryanshrott/saas.git
-   cd streamlit-saas
-   ```
+- Python 3.10+ (recomendado)
+- MongoDB accesible
+- credenciales/API keys configuradas por variables de entorno o `st.secrets`
 
-2. **Install Dependencies**:
-   Use the following command to install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Configuracion
 
-3. **Environment Variables**:
-   Update the `.env` file with the necessary credentials and API keys.
+Crear `saas/.env` (solo local, no versionar) con las variables usadas por la app:
 
-4. **Run the Streamlit App**:
-   ```bash
-   streamlit run Home.py
-   ```
+- `MONGO_AUTH`
+- `OPENAI_API_KEY`
+- `STRIPE_API_KEY`
+- `STRIPE_PAYMENT_URL`
+- `VERIFICATION_URL`
+- `YOUR_EMAIL`
+- `YOUR_EMAIL_PASS`
+- `AUTH_COOKIE_NAME`
+- `AUTH_COOKIE_KEY`
 
-### Features
+## Instalacion
 
-- **User Authentication**: The application integrates with MongoDB to authenticate users. New users can register, while existing users can log in.
+Desde la carpeta `saas`:
 
-- **Text Summarization Tool**: After logging in, users can use a text summarization tool, which leverages OpenAI's GPT-3.5 model to provide summaries of the provided text.
+```bash
+pip install -r requirements.txt
+```
 
-- **Subscription-only Translation Tool**: Subscribed users gain access to an exclusive translation tool. This tool translates text into the user-specified language using the GPT-3.5 model.
+## Ejecucion
 
-- **Email Verification**: New users need to verify their email address after registering. If they don't, they'll receive a reminder to do so.
+Desde la raiz del repo:
 
-- **Subscription Management**: Users can check their subscription status and access subscription-only tools. Non-subscribed users will be redirected to a payment URL.
+```bash
+streamlit run saas/Home.py
+```
 
-### Conclusion
+o desde `saas/`:
 
-This Streamlit SaaS application tutorial provides an excellent foundation for building robust and scalable SaaS platforms. Feel free to expand upon this foundation by adding more features, integrating additional services, and refining the user experience.
-
----
+```bash
+streamlit run Home.py
+```
