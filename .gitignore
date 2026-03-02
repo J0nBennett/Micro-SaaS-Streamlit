@@ -13,6 +13,7 @@ env/
 
 # Streamlit
 .streamlit/secrets.toml
+**/.streamlit/secrets.toml
 
 # Environment files
 .env

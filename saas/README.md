@@ -41,6 +41,16 @@ Crear `saas/.env` (solo local, no versionar) con las variables usadas por la app
 - `YOUR_EMAIL_PASS`
 - `AUTH_COOKIE_NAME`
 - `AUTH_COOKIE_KEY`
+- `APP_BASE_URL` (ejemplo: `http://localhost:8501`)
+- `RESET_TOKEN_EXPIRY_MINUTES` (opcional, default `30`)
+
+Tambien podes usar `saas/.streamlit/secrets.toml` (ver ejemplo en `saas/.streamlit/secrets.toml.example`).
+
+## Seguridad del reset de password
+
+- El flujo de recuperacion ahora envia un link/token de reset de un solo uso.
+- Ya no se envia una nueva password por email.
+- El token se guarda hasheado en MongoDB y expira.
 
 ## Instalacion
 

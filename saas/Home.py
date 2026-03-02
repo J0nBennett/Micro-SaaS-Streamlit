@@ -1,12 +1,15 @@
 import streamlit as st
-import os
 from dotenv import load_dotenv
 load_dotenv('.env')
 from mongo_auth import Authenticate
-from utils import *
-import webbrowser
-import numpy as np
-import pandas as pd
+from utils import (
+    forgot_password,
+    get_config_value,
+    is_email_subscribed,
+    register_new_user,
+    render_reset_password_form,
+    resend_verification,
+)
 import openai
 
 # Set Streamlit page configuration
@@ -18,7 +21,14 @@ st.set_page_config(page_title="SaaS", page_icon=":house", layout="centered", ini
 st.markdown('# Your SaaS App')
 
 # Initialize the authenticator
-st.session_state['authenticator'] = Authenticate("coolcookiesd267", "keyd3214", 60)
+if 'authenticator' not in st.session_state:
+    try:
+        cookie_name = get_config_value("AUTH_COOKIE_NAME", required=True)
+        cookie_key = get_config_value("AUTH_COOKIE_KEY", required=True)
+    except RuntimeError as exc:
+        st.error(str(exc))
+        st.stop()
+    st.session_state['authenticator'] = Authenticate(cookie_name, cookie_key, 60)
 
 # Set default session state values if not already set
 if 'authentication_status' not in st.session_state:
@@ -37,9 +47,11 @@ if 'translation' not in st.session_state:
 if st.session_state['verified'] and st.session_state["authentication_status"]:
     st.session_state['authenticator'].logout('Logout', 'sidebar', key='123')
 
-    openai.api_key = os.environ["OPENAI_API_KEY"]
-
-    client = openai.Client(api_key=os.environ["OPENAI_API_KEY"])
+    try:
+        client = openai.Client(api_key=get_config_value("OPENAI_API_KEY", required=True))
+    except RuntimeError as exc:
+        st.error(str(exc))
+        st.stop()
     # Check if the user's email is subscribed
     st.session_state['subscribed'] = is_email_subscribed(st.session_state['email'])
     
@@ -72,8 +84,10 @@ if st.session_state['verified'] and st.session_state["authentication_status"]:
     if st.button('Translate') and input2 and language and input2 != '' and language != '':
         if not st.session_state.get('subscribed'):
             st.error('Please subscribe to use this tool!')
-            st.link_button('Subscribe', os.getenv('STRIPE_PAYMENT_URL'))
-            #webbrowser.open_new_tab()
+            try:
+                st.link_button('Subscribe', get_config_value('STRIPE_PAYMENT_URL', required=True))
+            except RuntimeError as exc:
+                st.error(str(exc))
         else:
             response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -99,10 +113,12 @@ elif st.session_state["authentication_status"] == True:
 # Handle actions for users with incorrect login credentials
 elif st.session_state["authentication_status"] == False:
     st.error('Username/password is incorrect or does not exist. Reset login credential or register below.')
+    render_reset_password_form()
     forgot_password()
     register_new_user()
 
 # Handle actions for new users or users with no authentication status
 elif st.session_state["authentication_status"] == None:
     st.warning('New to SaaS app? Register below.')
+    render_reset_password_form()
     register_new_user()

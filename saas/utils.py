@@ -6,12 +6,29 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import smtplib
 import requests
+from urllib.parse import quote_plus
 load_dotenv()
-import numpy as np
+
+
+def get_config_value(key, default=None, required=False):
+    value = os.getenv(key)
+    if not value:
+        try:
+            value = st.secrets.get(key)
+        except Exception:
+            value = None
+    if not value:
+        value = default
+    if required and not value:
+        raise RuntimeError(f"Missing required config: {key}")
+    return value
 
 def resend_verification(email):
     # Call FastAPI email verification service
-    verification_url = os.getenv("VERIFICATION_URL")
+    verification_url = get_config_value("VERIFICATION_URL")
+    if not verification_url:
+        st.error("VERIFICATION_URL is not configured.")
+        return
     data = {'email': email}
     response = requests.post(verification_url, json=data)
     if response.status_code != 200:
@@ -22,7 +39,10 @@ def resend_verification(email):
 
 def is_email_subscribed(email):
     # Initialize the Stripe API with the given key
-    stripe.api_key = os.getenv("STRIPE_API_KEY")
+    stripe.api_key = get_config_value("STRIPE_API_KEY")
+    if not stripe.api_key:
+        st.error("STRIPE_API_KEY is not configured.")
+        return False
 
     # List customers with the given email address
     customers = stripe.Customer.list(email=email)
@@ -49,8 +69,10 @@ def reset_password():
             st.error(e)
 
 def send_email(subject, message, to_address):
-    from_address = os.getenv("YOUR_EMAIL")
-    password = os.getenv("YOUR_EMAIL_PASS")
+    from_address = get_config_value("YOUR_EMAIL")
+    password = get_config_value("YOUR_EMAIL_PASS")
+    if not from_address or not password:
+        raise RuntimeError("YOUR_EMAIL and YOUR_EMAIL_PASS must be configured to send email.")
     msg = MIMEMultipart()
     msg['From'] = from_address
     msg['To'] = to_address
@@ -78,14 +100,34 @@ def forgot_username():
 
 def forgot_password():
     try:
-        username_forgot_pw, email_forgot_password, random_password = st.session_state['authenticator'].forgot_password('Forgot password')
-        if username_forgot_pw:
-            subject = 'Your SmartBids New Password'
-            message = f'Your new SmartBids password is: {random_password}. Please login and reset your password.'
-            send_email(subject, message, email_forgot_password)
-            st.success('New password sent securely')
+        reset_email, reset_token, expires_at = st.session_state['authenticator'].forgot_password('Forgot password')
+        if reset_email:
+            app_base_url = get_config_value("APP_BASE_URL")
+            if app_base_url:
+                reset_link = (
+                    f"{app_base_url}?reset_email={quote_plus(reset_email)}&reset_token={quote_plus(reset_token)}"
+                )
+                message = (
+                    "We received a password reset request for your account.\n\n"
+                    f"Use this reset link (expires at {expires_at.isoformat()} UTC):\n{reset_link}\n\n"
+                    "If you did not request this change, you can ignore this email."
+                )
+            else:
+                message = (
+                    "We received a password reset request for your account.\n\n"
+                    f"Open the app and use this token before {expires_at.isoformat()} UTC:\n"
+                    f"Email: {reset_email}\nToken: {reset_token}\n\n"
+                    "If you did not request this change, you can ignore this email."
+                )
+
+            send_email(
+                "Password reset request",
+                message,
+                reset_email,
+            )
+            st.success('Password reset link sent securely')
         else:
-            st.error('Username not found. Register below.')
+            st.error('Email not found. Register below.')
     except Exception as e:
         st.error(e)
 
@@ -96,4 +138,30 @@ def register_new_user():
             st.success('Great! Now please complete registration by confirming your email address. Then login above!')
     except Exception as e:
         st.error(e)
+
+
+def render_reset_password_form():
+    reset_email = st.query_params.get("reset_email")
+    reset_token = st.query_params.get("reset_token")
+    if not reset_email or not reset_token:
+        return
+
+    st.info("Password reset link detected. Set your new password below.")
+    with st.form("Set new password"):
+        new_password = st.text_input("New password", type="password")
+        repeat_password = st.text_input("Repeat new password", type="password")
+        submitted = st.form_submit_button("Set password")
+
+    if submitted:
+        try:
+            if st.session_state["authenticator"].reset_password_with_token(
+                reset_email,
+                reset_token,
+                new_password,
+                repeat_password,
+            ):
+                st.success("Password updated successfully. You can now log in.")
+                st.query_params.clear()
+        except Exception as e:
+            st.error(e)
 

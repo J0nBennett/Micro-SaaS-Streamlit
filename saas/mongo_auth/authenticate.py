@@ -11,6 +11,9 @@ from .exceptions import CredentialsError, ForgotError, RegisterError, ResetError
 import re
 import requests
 import json
+import secrets
+import hashlib
+import hmac
 
 class Authenticate:
     """
@@ -110,7 +113,7 @@ class Authenticate:
             if self.token is not False:
                 if not st.session_state['logout']:
                     if self.token['exp_date'] > datetime.utcnow().timestamp():
-                        if 'name' and 'email' in self.token:
+                        if 'name' in self.token and 'email' in self.token:
                             st.session_state['name'] = self.token['name']
                             st.session_state['email'] = self.token['email']
                             st.session_state['authentication_status'] = True
@@ -515,6 +518,71 @@ class Authenticate:
         client.close()
         return self.random_password
 
+    def _hash_reset_token(self, token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def _create_password_reset_token(self, email: str):
+        token = secrets.token_urlsafe(32)
+        token_hash = self._hash_reset_token(token)
+        expires_at = datetime.utcnow() + timedelta(minutes=int(os.environ.get("RESET_TOKEN_EXPIRY_MINUTES", "30")))
+        client = MongoClient(self.mongo_uri)
+        db = client[self.db_name]
+        users = db['users']
+        users.update_one(
+            {'email': email},
+            {'$set': {
+                'reset_token_hash': token_hash,
+                'reset_token_expires_at': expires_at,
+                'reset_token_used': False
+            }}
+        )
+        client.close()
+        return token, expires_at
+
+    def _validate_password_reset_token(self, email: str, token: str):
+        client = MongoClient(self.mongo_uri)
+        db = client[self.db_name]
+        users = db['users']
+        user = users.find_one({'email': email})
+        client.close()
+        if not user:
+            return False, 'Invalid reset request'
+
+        token_hash = user.get('reset_token_hash')
+        token_expires_at = user.get('reset_token_expires_at')
+        token_used = user.get('reset_token_used', False)
+        if not token_hash or not token_expires_at or token_used:
+            return False, 'Reset token is invalid or already used'
+        if token_expires_at < datetime.utcnow():
+            return False, 'Reset token has expired'
+        if not hmac.compare_digest(token_hash, self._hash_reset_token(token)):
+            return False, 'Reset token is invalid'
+        return True, None
+
+    def reset_password_with_token(self, email: str, token: str, new_password: str, new_password_repeat: str) -> bool:
+        if not email or not token:
+            raise ResetError('Reset token and email are required')
+        if len(new_password) == 0:
+            raise ResetError('No new password provided')
+        if new_password != new_password_repeat:
+            raise ResetError('Passwords do not match')
+
+        is_valid, error_message = self._validate_password_reset_token(email.lower(), token)
+        if not is_valid:
+            raise ResetError(error_message)
+
+        hashed_password = Hasher([new_password]).generate()[0]
+        client = MongoClient(self.mongo_uri)
+        db = client[self.db_name]
+        users = db['users']
+        result = users.update_one(
+            {'email': email.lower()},
+            {'$set': {'password': hashed_password, 'reset_token_used': True},
+             '$unset': {'reset_token_hash': '', 'reset_token_expires_at': ''}}
+        )
+        client.close()
+        return result.modified_count == 1
+
     def forgot_password(self, form_name: str, location: str='main') -> tuple:
         """
         Creates a forgot password widget.
@@ -552,7 +620,8 @@ class Authenticate:
                 user = users.find_one({'email': email})
                 client.close()
                 if user:
-                    return email, user['email'], self._set_random_password(email)
+                    token, expires_at = self._create_password_reset_token(email)
+                    return email, token, expires_at
                 else:
                     return False, None, None
             else:
