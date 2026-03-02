@@ -4,6 +4,7 @@ import streamlit as st
 from datetime import datetime, timedelta
 import extra_streamlit_components as stx
 from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 import os
 from .hasher import Hasher
 from .utils import generate_random_pw
@@ -14,6 +15,9 @@ import json
 import secrets
 import hashlib
 import hmac
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Authenticate:
     """
@@ -71,7 +75,8 @@ class Authenticate:
         """
         try:
             return jwt.decode(self.token, self.key, algorithms=['HS256'])
-        except:
+        except jwt.InvalidTokenError:
+            logger.warning("Invalid auth cookie token.")
             return False
 
     def _set_exp_date(self) -> str:
@@ -131,22 +136,20 @@ class Authenticate:
         bool
             Validity of entered email.
         """
-        print('checking email verified')
-        print(self.email)
+        logger.debug("Checking email verification state for login flow.")
         client = MongoClient(self.mongo_uri)
         db = client[self.db_name]
         users = db['users'] 
         user = users.find_one({'email': str(self.email)})
         client.close()
-        print(user)
         if user is not None:
             if 'verified' in user and user['verified']:
                 st.session_state['verified'] = True
-                print('user verified!!!')
+                logger.info("Email verified for current login attempt.")
                 return True
             else:
                 st.session_state['verified'] = False
-                print('user not verified')
+                logger.info("Email not verified for current login attempt.")
                 return False
         st.session_state['verified'] = False
         return False
@@ -166,7 +169,7 @@ class Authenticate:
         bool
             Validity of entered credentials.
         """
-        print('checking credentials....')
+        logger.debug("Checking credentials.")
         st.session_state['verified'] = False
         client = MongoClient(self.mongo_uri)
         db = client[self.db_name]
@@ -176,7 +179,7 @@ class Authenticate:
         if user is not None:
             try:
                 if 'verified' in user and user['verified']:
-                    print("VERIFIED")
+                    logger.debug("User is verified in DB.")
                     st.session_state['verified'] = True                    
                 if self._check_pw():
                     if inplace:
@@ -193,8 +196,24 @@ class Authenticate:
                         st.session_state['authentication_status'] = False
                     else:
                         return False
-            except Exception as e:
-                print(e)
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.warning("Credential check failed due to invalid user payload: %s", exc)
+                if inplace:
+                    st.session_state['authentication_status'] = False
+                else:
+                    return False
+            except PyMongoError:
+                logger.exception("Database error while checking user credentials.")
+                if inplace:
+                    st.session_state['authentication_status'] = False
+                else:
+                    return False
+            except Exception:
+                logger.exception("Unexpected error while checking user credentials.")
+                if inplace:
+                    st.session_state['authentication_status'] = False
+                else:
+                    return False
         else:
             if inplace:
                 st.session_state['authentication_status'] = False
@@ -222,13 +241,13 @@ class Authenticate:
         str
             email of the authenticated user.
         """
-        print('login')
+        logger.debug("Rendering login flow.")
         if location not in ['main', 'sidebar']:
             raise ValueError("Location must be one of 'main' or 'sidebar'")
         if not st.session_state['authentication_status'] or st.session_state.get('verified') in [None, False]:
             self._check_cookie()
             self.email = st.session_state.get('email')
-            print('verified', st.session_state.get('verified'))
+            logger.debug("Current verified state in session: %s", st.session_state.get('verified'))
             if st.session_state.get('verified') in [None, False]:
                 self._check_email_verified()
             if st.session_state.get('authentication_status') in [None, False] or st.session_state.get('verified') in [None, False]:
@@ -406,18 +425,27 @@ class Authenticate:
             }
 
             response = requests.post('https://emailoctopus.com/api/1.6/lists/a7f14044-54c0-11ee-bed9-57e59232c7ed/contacts', headers=headers, data=json.dumps(data))
-
-            print(response.text)
-
-        except Exception as e:
-            print(e)
+            if response.status_code >= 400:
+                logger.warning("EmailOctopus contact creation returned status %s.", response.status_code)
+        except requests.exceptions.RequestException:
+            logger.exception("EmailOctopus request failed during registration.")
+        except KeyError:
+            logger.warning("OCTOPUS_KEY missing. Skipping EmailOctopus subscription.")
+        except Exception:
+            logger.exception("Unexpected error while calling EmailOctopus.")
 
         # Call FastAPI email verification service after successfully adding to users and Octupus list
-        verification_url = os.get_environ("VERIFICATION_URL")
+        verification_url = os.environ.get("VERIFICATION_URL")
+        if not verification_url:
+            logger.warning("VERIFICATION_URL missing. Skipping verification email dispatch.")
+            return
         data = {'email': email, 'id': '123'}
-        response = requests.post(verification_url, json=data)
-        if response.status_code != 200:
-            print(f"Failed to send verification email: {response.text}")
+        try:
+            response = requests.post(verification_url, json=data)
+            if response.status_code != 200:
+                logger.warning("Verification service returned status %s for registration flow.", response.status_code)
+        except requests.exceptions.RequestException:
+            logger.exception("Verification service request failed during registration.")
 
         
 

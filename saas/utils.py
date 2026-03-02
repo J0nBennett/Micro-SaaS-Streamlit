@@ -7,7 +7,11 @@ from email.mime.text import MIMEText
 import smtplib
 import requests
 from urllib.parse import quote_plus
+import logging
+from mongo_auth.exceptions import ForgotError, RegisterError, ResetError
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 def get_config_value(key, default=None, required=False):
@@ -30,11 +34,16 @@ def resend_verification(email):
         st.error("VERIFICATION_URL is not configured.")
         return
     data = {'email': email}
-    response = requests.post(verification_url, json=data)
-    if response.status_code != 200:
-        st.error(f"Failed to resend verification email: {response.text}")
-    else:
-        st.success("Verification email resent successfully!")
+    try:
+        response = requests.post(verification_url, json=data)
+        if response.status_code != 200:
+            logger.warning("Verification resend returned status %s.", response.status_code)
+            st.error("Failed to resend verification email.")
+        else:
+            st.success("Verification email resent successfully!")
+    except requests.exceptions.RequestException:
+        logger.exception("Verification resend request failed.")
+        st.error("Failed to resend verification email.")
 
 
 def is_email_subscribed(email):
@@ -65,8 +74,15 @@ def reset_password():
         try:
             if st.session_state['authenticator'].reset_password(st.session_state['username'], 'Reset password'):
                 st.success('Password modified successfully')
-        except Exception as e:
-            st.error(e)
+        except ResetError as exc:
+            logger.warning("Reset password validation error: %s", exc)
+            st.error(str(exc))
+        except ValueError as exc:
+            logger.warning("Reset password input error: %s", exc)
+            st.error(str(exc))
+        except Exception:
+            logger.exception("Unexpected error during reset password flow.")
+            st.error("Password reset failed. Please try again.")
 
 def send_email(subject, message, to_address):
     from_address = get_config_value("YOUR_EMAIL")
@@ -128,16 +144,30 @@ def forgot_password():
             st.success('Password reset link sent securely')
         else:
             st.error('Email not found. Register below.')
-    except Exception as e:
-        st.error(e)
+    except ForgotError as exc:
+        logger.warning("Forgot password validation error: %s", exc)
+        st.error(str(exc))
+    except (RuntimeError, smtplib.SMTPException) as exc:
+        logger.error("Failed to send password reset email: %s", exc)
+        st.error("Password reset email could not be sent.")
+    except Exception:
+        logger.exception("Unexpected error during forgot password flow.")
+        st.error("Password reset request failed. Please try again.")
 
 
 def register_new_user():
     try:
         if st.session_state['authenticator'].register_user('Register user', preauthorization=False):
             st.success('Great! Now please complete registration by confirming your email address. Then login above!')
-    except Exception as e:
-        st.error(e)
+    except RegisterError as exc:
+        logger.warning("Registration validation error: %s", exc)
+        st.error(str(exc))
+    except ValueError as exc:
+        logger.warning("Registration configuration error: %s", exc)
+        st.error(str(exc))
+    except Exception:
+        logger.exception("Unexpected error during user registration flow.")
+        st.error("User registration failed. Please try again.")
 
 
 def render_reset_password_form():
@@ -162,6 +192,13 @@ def render_reset_password_form():
             ):
                 st.success("Password updated successfully. You can now log in.")
                 st.query_params.clear()
-        except Exception as e:
-            st.error(e)
+        except ResetError as exc:
+            logger.warning("Reset token flow validation error: %s", exc)
+            st.error(str(exc))
+        except ValueError as exc:
+            logger.warning("Reset token flow input error: %s", exc)
+            st.error(str(exc))
+        except Exception:
+            logger.exception("Unexpected error during reset token flow.")
+            st.error("Password update failed. Please try again.")
 
