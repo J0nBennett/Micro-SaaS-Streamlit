@@ -73,3 +73,12 @@ o desde `saas/`:
 ```bash
 streamlit run Home.py
 ```
+
+## Testing
+
+Desde la raiz del repo:
+
+```bash
+pip install -r saas/requirements.txt -r requirements-dev.txt
+pytest -q
+```
