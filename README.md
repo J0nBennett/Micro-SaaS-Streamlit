@@ -9,17 +9,18 @@ Aplicacion Streamlit con:
 ## Estructura actual
 
 ```
-saas/
-  Home.py
+Home.py
+utils.py
+requirements.txt
+mongo_auth/
+  authenticate.py
+  hasher.py
+  exceptions.py
   utils.py
-  requirements.txt
-  mongo_auth/
-    authenticate.py
-    hasher.py
-    exceptions.py
-    utils.py
-  pages/
-    Account_Management.py
+pages/
+  Account_Management.py
+tests/
+  ...
 ```
 
 ## Requisitos
@@ -30,7 +31,7 @@ saas/
 
 ## Configuracion
 
-Crear `saas/.env` (solo local, no versionar) con las variables usadas por la app:
+Crear `.env` (solo local, no versionar) con las variables usadas por la app:
 
 - `MONGO_AUTH`
 - `OPENAI_API_KEY`
@@ -44,7 +45,7 @@ Crear `saas/.env` (solo local, no versionar) con las variables usadas por la app
 - `APP_BASE_URL` (ejemplo: `http://localhost:8501`)
 - `RESET_TOKEN_EXPIRY_MINUTES` (opcional, default `30`)
 
-Tambien podes usar `saas/.streamlit/secrets.toml` (ver ejemplo en `saas/.streamlit/secrets.toml.example`).
+Tambien podes usar `.streamlit/secrets.toml` (ver ejemplo en `.streamlit/secrets.toml.example`).
 
 ## Seguridad del reset de password
 
@@ -54,21 +55,11 @@ Tambien podes usar `saas/.streamlit/secrets.toml` (ver ejemplo en `saas/.streaml
 
 ## Instalacion
 
-Desde la carpeta `saas`:
-
 ```bash
 pip install -r requirements.txt
 ```
 
 ## Ejecucion
-
-Desde la raiz del repo:
-
-```bash
-streamlit run saas/Home.py
-```
-
-o desde `saas/`:
 
 ```bash
 streamlit run Home.py
@@ -79,6 +70,6 @@ streamlit run Home.py
 Desde la raiz del repo:
 
 ```bash
-pip install -r saas/requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt -r requirements-dev.txt
 pytest -q
 ```
