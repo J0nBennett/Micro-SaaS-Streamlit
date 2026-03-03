@@ -136,12 +136,20 @@ class Authenticate:
         bool
             Validity of entered email.
         """
-        logger.debug("Checking email verification state for login flow.")
-        client = MongoClient(self.mongo_uri)
-        db = client[self.db_name]
-        users = db['users'] 
-        user = users.find_one({'email': str(self.email)})
-        client.close()
+        if not self.email or str(self.email).lower() == 'none':
+            st.session_state['verified'] = False
+            return False
+        try:
+            client = MongoClient(self.mongo_uri, serverSelectionTimeoutMS=2000)
+            db = client[self.db_name]
+            users = db['users'] 
+            user = users.find_one({'email': str(self.email)})
+            client.close()
+        except Exception as exc:
+            logger.warning("Database connection failed in _check_email_verified: %s", exc)
+            st.session_state['verified'] = False
+            return False
+        
         if user is not None:
             if 'verified' in user and user['verified']:
                 st.session_state['verified'] = True

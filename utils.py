@@ -202,3 +202,38 @@ def render_reset_password_form():
             logger.exception("Unexpected error during reset token flow.")
             st.error("Password update failed. Please try again.")
 
+def save_activity(email, activity_type, input_text, output_text):
+    mongo_uri = get_config_value("MONGO_AUTH")
+    if not mongo_uri:
+        return
+    try:
+        from datetime import datetime
+        from pymongo import MongoClient
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+        db = client['smartbids']
+        activities = db['activity']
+        activities.insert_one({
+            'email': email,
+            'type': activity_type,
+            'input': input_text[:500], # Truncate for safety
+            'output': output_text[:1000],
+            'timestamp': datetime.utcnow()
+        })
+        client.close()
+    except Exception as e:
+        logger.warning(f"Failed to save activity: {e}")
+
+def get_recent_activity(email, limit=5):
+    mongo_uri = get_config_value("MONGO_AUTH")
+    if not mongo_uri:
+        return []
+    try:
+        from pymongo import MongoClient
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
+        db = client['smartbids']
+        activities = db['activity']
+        results = list(activities.find({'email': email}).sort('timestamp', -1).limit(limit))
+        client.close()
+        return results
+    except Exception:
+        return []
